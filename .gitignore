@@ -1,0 +1,17 @@
+# Data — too large for git
+data/
+
+# Python environment
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# Model artifacts
+*.faiss
+*.pkl
+*.parquet
+
+# macOS
+.DS_Store
