@@ -1,7 +1,6 @@
 # Mood2Music — Affective Music Retrieval System
 
 > **Status: Active revamp** — rebuilding from prototype to production-grade architecture.
-> Original prototype: [ss1705/Mood2Music](https://github.com/ss1705/Mood2Music)
 
 ## What this is
 
