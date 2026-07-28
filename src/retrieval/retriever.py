@@ -13,6 +13,7 @@ Design:
 """
 
 import numpy as np
+import pandas as pd
 import faiss
 import duckdb
 import pickle
@@ -214,3 +215,276 @@ def search_hybrid(query_text,
 
     candidates.sort(key=lambda x: x['final_score'], reverse=True)
     return candidates[:k]
+
+def _get_va_coordinates(mood_text, model_2a, index_2a, map_2a, catalog, k=5):
+    """
+    Convert free-text mood to (valence, energy) coordinates.
+
+    Three-layer strategy:
+      1. Phrase overrides — compound expressions whose meaning differs
+         from their component words (e.g. 'low energy' should map to
+         low arousal, but word-level lookup gives moderate arousal
+         because 'energy' is high-arousal in general English).
+      2. VAD lexicon — word-level lookup with modifier handling.
+      3. Phase 2A fallback — semantic retrieval for unrecognized input.
+    """
+    import re
+    text_lower = mood_text.lower()
+
+    # Layer 1 — phrase overrides
+    phrase_matches = []
+    for phrase, coords in PHRASE_OVERRIDES.items():
+        if phrase in text_lower:
+            phrase_matches.append(coords)
+
+    # Layer 2 — word-level VAD with modifiers
+    words = re.findall(r'[a-z]+', text_lower)
+    words = [w for w in words if w not in STOPWORDS]
+    word_matches = _apply_modifiers(words, VAD_LEXICON)
+
+    all_matches = phrase_matches + word_matches
+
+    if all_matches:
+        valence = float(np.clip(np.mean([m[0] for m in all_matches]), 0, 1))
+        energy  = float(np.clip(np.mean([m[1] for m in all_matches]), 0, 1))
+        return round(valence, 3), round(energy, 3)
+
+    # Layer 3 — Phase 2A fallback
+    ref = search_2a(mood_text, model_2a, index_2a, map_2a, catalog, k=k)
+    valence = float(np.mean([r['valence'] for r in ref]))
+    energy  = float(np.mean([r['energy']  for r in ref]))
+    return round(valence, 3), round(energy, 3)
+
+def _tracks_near_coordinate(target_valence, target_energy, catalog, k=2, exclude_ids=None):
+    """
+    Find tracks whose Echonest valence/energy are nearest to a target
+    coordinate in VA space, using Euclidean distance.
+
+    Pure numeric search — no embeddings, no FAISS. Works directly on
+    the catalog DataFrame.
+
+    Args:
+        exclude_ids: set of track_ids already used in earlier waypoints,
+                     so the playlist doesn't repeat tracks.
+    """
+    if exclude_ids is None:
+        exclude_ids = set()
+
+    df = catalog[~catalog['track_id'].isin(exclude_ids)].copy()
+
+    df['va_distance'] = np.sqrt(
+        (df['valence'] - target_valence) ** 2 +
+        (df['energy']  - target_energy)  ** 2
+    )
+
+    nearest = df.nsmallest(k, 'va_distance')
+
+    results = []
+    for _, row in nearest.iterrows():
+        results.append({
+            'track_id':   int(row['track_id']),
+            'title':      row['title'],
+            'artist':     row['artist_name'],
+            'genre':      row['genre_top'],
+            'valence':    round(float(row['valence']), 3),
+            'energy':     round(float(row['energy']),  3),
+            'va_distance': round(float(row['va_distance']), 3),
+        })
+    return results
+
+
+def search_regulation(current_mood, target_mood,
+                      model_2a, index_2a, map_2a,
+                      catalog,
+                      n_waypoints=5,
+                      tracks_per_waypoint=2):
+    """
+    Mood regulation playlist: navigates from current mood to target mood
+    through the valence-arousal space via linear interpolation.
+
+    Design:
+        Both mood inputs are converted to VA coordinates via Phase 2A —
+        the same mechanism used in search_hybrid to derive penalty targets.
+        Waypoints are evenly spaced along the straight line between them.
+        Each waypoint retrieves tracks by Euclidean distance in VA space.
+
+        Why straight-line interpolation:
+        Linear interpolation is the simplest path between two points in
+        a continuous space. More complex paths (curves, weighted steps)
+        would require assumptions about how emotional transitions feel
+        that we don't have data to justify. Start linear, refine later.
+
+        Why exclude already-used tracks:
+        A regulation playlist should feel like a journey — repeating a
+        track breaks the sense of forward motion.
+
+    Args:
+        current_mood:        free text describing how the user feels now
+        target_mood:         free text describing how the user wants to feel
+        n_waypoints:         number of steps including start and end (default 5)
+        tracks_per_waypoint: songs retrieved at each waypoint (default 2)
+
+    Returns:
+        dict with keys:
+            'current_coords'  — (valence, energy) of current mood
+            'target_coords'   — (valence, energy) of target mood
+            'waypoints'       — list of waypoint dicts, each containing:
+                'step'        — waypoint index (0 = current, n-1 = target)
+                'valence'     — waypoint valence coordinate
+                'energy'      — waypoint energy coordinate
+                'tracks'      — list of track dicts nearest this coordinate
+    """
+    # Step 1 — convert mood text to VA coordinates
+    current_v, current_e = _get_va_coordinates(
+        current_mood, model_2a, index_2a, map_2a, catalog
+    )
+    target_v, target_e = _get_va_coordinates(
+        target_mood, model_2a, index_2a, map_2a, catalog
+    )
+
+    # Step 2 — interpolate waypoints
+    waypoint_coords = []
+    for i in range(n_waypoints):
+        t = i / (n_waypoints - 1)   # 0.0 at start, 1.0 at end
+        wp_v = round(current_v + t * (target_v - current_v), 3)
+        wp_e = round(current_e + t * (target_e - current_e), 3)
+        waypoint_coords.append((wp_v, wp_e))
+
+    # Step 3 — retrieve tracks at each waypoint
+    used_ids = set()
+    waypoints = []
+
+    for i, (wp_v, wp_e) in enumerate(waypoint_coords):
+        tracks = _tracks_near_coordinate(
+            wp_v, wp_e, catalog,
+            k=tracks_per_waypoint,
+            exclude_ids=used_ids
+        )
+        used_ids.update(t['track_id'] for t in tracks)
+
+        waypoints.append({
+            'step':    i,
+            'valence': wp_v,
+            'energy':  wp_e,
+            'tracks':  tracks
+        })
+
+    return {
+        'current_mood':   current_mood,
+        'target_mood':    target_mood,
+        'current_coords': (current_v, current_e),
+        'target_coords':  (target_v,  target_e),
+        'waypoints':      waypoints
+    }
+
+# Phrase-level VA overrides — compound expressions whose meaning
+# differs significantly from the average of their component words.
+# Applied before word-level lookup.
+# Values derived from Russell's circumplex model.
+PHRASE_OVERRIDES = {
+    'low energy':      (0.40, 0.15),
+    'high energy':     (0.70, 0.90),
+    'low mood':        (0.15, 0.20),
+    'good mood':       (0.80, 0.60),
+    'bad mood':        (0.10, 0.50),
+    'burnt out':       (0.15, 0.10),
+    'worn out':        (0.20, 0.10),
+    'wiped out':       (0.15, 0.10),
+    'fed up':          (0.10, 0.60),
+    'fired up':        (0.75, 0.90),
+    'wound up':        (0.20, 0.85),
+    'on edge':         (0.15, 0.80),
+    'at peace':        (0.80, 0.10),
+    'at ease':         (0.75, 0.15),
+    'ready to go':     (0.75, 0.85),
+    'can\'t focus':    (0.25, 0.60),
+}
+
+NEGATIONS = {'not', 'no', "n't", 'never', 'without'}
+INTENSIFIERS = {'very', 'extremely', 'really', 'so', 'super'}
+DIMINISHERS = {'low', 'little', 'slightly', 'somewhat', 'kind', 'kinda', 'sort'}
+STOPWORDS = {
+    'i', 'feel', 'feeling', 'am', 'im', 'want', 'to', 'be', 'like',
+    'a', 'an', 'the', 'and', 'or', 'but', 'so', 'my', 'me', 'myself',
+    'get', 'go', 'just', 'really', 'that', 'this', 'it', 'is', 'at',
+    'in', 'of', 'with', 'for', 'have', 'has', 'do', 'did', 'would',
+    'could', 'should', 'bit', 'lot', 'way', 'right', 'now'
+}
+
+def _apply_modifiers(words, vad_lexicon):
+    """
+    Handle modifier words before VAD lookup.
+    
+    Three cases:
+      Negation:    'not calm'    → flip valence and arousal around 0.5
+      Intensifier: 'very calm'  → push values further from 0.5
+      Diminisher:  'low energy' → pull values toward 0.5
+    
+    Words not preceded by a modifier are looked up normally.
+    Modifiers themselves are consumed and not looked up.
+    """
+    matched = []
+    skip_next = False
+    
+    for i, word in enumerate(words):
+        if skip_next:
+            skip_next = False
+            continue
+            
+        # Check if this word is a modifier
+        if word in NEGATIONS and i + 1 < len(words):
+            next_word = words[i + 1]
+            if next_word in vad_lexicon:
+                v, a = vad_lexicon[next_word]
+                # Flip around 0.5 — negate the affect
+                matched.append((1.0 - v, 1.0 - a))
+                skip_next = True
+            continue
+            
+        if word in INTENSIFIERS and i + 1 < len(words):
+            next_word = words[i + 1]
+            if next_word in vad_lexicon:
+                v, a = vad_lexicon[next_word]
+                # Push further from 0.5
+                matched.append((
+                    0.5 + 1.3 * (v - 0.5),
+                    0.5 + 1.3 * (a - 0.5)
+                ))
+                skip_next = True
+            continue
+            
+        if word in DIMINISHERS and i + 1 < len(words):
+            next_word = words[i + 1]
+            if next_word in vad_lexicon:
+                v, a = vad_lexicon[next_word]
+                # Pull toward 0.5
+                matched.append((
+                    0.5 + 0.5 * (v - 0.5),
+                    0.5 + 0.5 * (a - 0.5)
+                ))
+                skip_next = True
+            continue
+        
+        # No modifier — look up normally
+        if word in vad_lexicon:
+            matched.append(vad_lexicon[word])
+    
+    return matched
+
+def _load_vad_lexicon():
+    """
+    Load NRC VAD Lexicon as a word → (valence, arousal) dict.
+    Dominance dimension is excluded — not used in this system.
+    
+    Source: Mohammad & Turney (2018), NRC VAD Lexicon Aug2018 release.
+    Terms: research use only, not redistributed.
+    """
+    path = PROJECT_ROOT / 'data' / 'NRC-VAD-Lexicon.txt'
+    df = pd.read_csv(path, sep='\t', header=0,
+                     names=['word', 'valence', 'arousal', 'dominance'])
+    return {
+        row['word']: (float(row['valence']), float(row['arousal']))
+        for _, row in df.iterrows()
+    }
+
+VAD_LEXICON = _load_vad_lexicon()
