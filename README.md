@@ -57,13 +57,35 @@ serving logic runs locally.
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| 1 — Data catalog | ✅ Done | FMA + Echonest → clean Parquet catalog |
-| 2A — Text retrieval | ✅ Done | Sentence-transformer + FAISS |
-| 2B — CLAP retrieval | ✅ Done | Audio embeddings + FAISS (Colab) |
-| 2C — Hybrid rerank | 🔨 In progress | CLAP + valence penalty |
-| 3 — Mood regulation | ⬜ Planned | Waypoint playlists across VA space |
-| 4 — Personalization | ⬜ Planned | Implicit feedback + reranking |
-| 5 — Frontend + API | ⬜ Planned | FastAPI backend, React UI |
+| 1 — Data catalog | ✅ Done | FMA + Echonest → clean Parquet catalog, 11,868 tracks |
+| 2A — Text retrieval | ✅ Done | Sentence-transformer + FAISS, text-description embeddings |
+| 2B — CLAP retrieval | ✅ Done | Audio embeddings via laion/clap-htsat-fused (Colab A100) |
+| 2C — Hybrid rerank | ✅ Done | CLAP candidates + dual-axis valence/energy penalty |
+| 3 — Mood regulation | ✅ Done | Waypoint playlists navigating the valence-arousal space |
+| 4 — Personalization | ⬜ Planned | Implicit feedback + collaborative filtering reranker |
+| 5 — Frontend + API | ⬜ Planned | FastAPI backend, React/TypeScript UI |
+
+## Mood Regulation
+
+The mood regulation feature is the most differentiated part of this system. Rather than
+matching a static mood, it navigates from a current emotional state to a target state
+through the valence-arousal space via linear interpolation.
+
+A user provides two free-text inputs — how they feel now and how they want to feel.
+Both are converted to (valence, energy) coordinates using a three-layer mapping:
+
+1. **Phrase overrides** — compound expressions like "low energy" or "at peace" that
+   word-level lexicons systematically mishandle
+2. **NRC VAD Lexicon** — 20,000 English words rated by humans on valence and arousal
+   dimensions (Mohammad & Turney, 2018), with modifier handling for negation,
+   intensifiers, and diminishers
+3. **Phase 2A fallback** — semantic retrieval for words not covered by the lexicon
+
+Five waypoints are interpolated along the straight line between the two coordinates.
+For each waypoint, tracks are retrieved by Euclidean distance in VA space using
+Echonest valence and energy scores — no embeddings needed at this stage.
+
+The result is a 10-song playlist that traces a deliberate emotional arc.
 
 ## Stack
 
