@@ -8,10 +8,10 @@ __pycache__/
 *.pyo
 .ipynb_checkpoints/
 
-# Model artifacts
-*.faiss
-*.pkl
-*.parquet
-
 # macOS
 .DS_Store
+
+# Allow production data files (exceptions to data/ rule)
+!data/catalog.parquet
+!data/track_index.faiss
+!data/track_id_map.pkl
