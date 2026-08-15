@@ -45,7 +45,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173",  # Vite dev server
                    "https://mood2music-production.up.railway.app"
-                   "https://mood2music.vercel.app"],  # production
+                   "https://mood2-music.vercel.app"],  # production
     allow_methods=["*"],
     allow_headers=["*"],
 )
