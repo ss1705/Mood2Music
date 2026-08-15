@@ -51,6 +51,7 @@ class Track(BaseModel):
     genre:      str
     valence:    float
     energy:     float
+    youtube_url: str
 
 
 class SearchMeta(BaseModel):

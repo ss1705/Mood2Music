@@ -72,7 +72,14 @@ def load_clap_artifacts():
 
 def _track_metadata(track_id, catalog):
     """Return a single track's metadata dict by track_id."""
+
     row = catalog[catalog['track_id'] == track_id].iloc[0]
+
+     # Generate YouTube search URL for this track
+    import urllib.parse
+    query = urllib.parse.quote(f"{row['title']} {row['artist_name']}")
+    youtube_url = f"https://www.youtube.com/results?search_query={query}"
+
     return {
         'track_id':  int(row['track_id']),
         'title':     row['title'],
@@ -80,6 +87,8 @@ def _track_metadata(track_id, catalog):
         'genre':     row['genre_top'],
         'valence':   round(float(row['valence']), 3),
         'energy':    round(float(row['energy']), 3),
+        'youtube_url': youtube_url,
+        'description': generate_track_description(row)
     }
 
 
@@ -108,25 +117,33 @@ def _embed_text_clap(query_text, model, processor, device):
 
 def search_2a(query_text, model, index, track_id_map, catalog, k=5):
     """
-    Phase 2A: sentence-transformer retrieval.
+    Phase 2A: sentence-transformer retrieval with query reranking.
 
-    Embeds the query as text, searches against text-description
-    embeddings of tracks. Works well for valence-axis queries
-    (melancholy, uplifting) but limited by description vocabulary.
+    Two-stage:
+      1. FAISS retrieves top k*3 candidates by description similarity
+      2. Rerank by direct query-description cosine similarity
+      3. Return top k after reranking
+
+    Why retrieve k*3 then rerank to k:
+        Reranking within only k results is too narrow — the best match
+        for the specific query might just miss the top-k cutoff from
+        FAISS. Retrieving a wider pool gives reranking room to work.
     """
     query_vec = model.encode([query_text], convert_to_numpy=True)
     faiss.normalize_L2(query_vec)
-    scores, positions = index.search(query_vec, k)
+    scores, positions = index.search(query_vec, k * 3)  # wider pool
 
     results = []
     for score, pos in zip(scores[0], positions[0]):
         track_id = track_id_map[pos]
         meta = _track_metadata(track_id, catalog)
         meta['similarity'] = round(float(score), 3)
-        meta['system'] = '2a'
         results.append(meta)
-    return results
 
+    # Rerank by query-description semantic similarity
+    results = _rerank_by_query(results, query_text, model)
+
+    return results[:k]
 
 def search_clap(query_text, model, processor, device,
                 index, track_id_map, catalog, k=5):
@@ -256,17 +273,8 @@ def _get_va_coordinates(mood_text, model_2a, index_2a, map_2a, catalog, k=5):
     return round(valence, 3), round(energy, 3)
 
 def _tracks_near_coordinate(target_valence, target_energy, catalog, k=2, exclude_ids=None):
-    """
-    Find tracks whose Echonest valence/energy are nearest to a target
-    coordinate in VA space, using Euclidean distance.
-
-    Pure numeric search — no embeddings, no FAISS. Works directly on
-    the catalog DataFrame.
-
-    Args:
-        exclude_ids: set of track_ids already used in earlier waypoints,
-                     so the playlist doesn't repeat tracks.
-    """
+    import urllib.parse
+    
     if exclude_ids is None:
         exclude_ids = set()
 
@@ -281,14 +289,17 @@ def _tracks_near_coordinate(target_valence, target_energy, catalog, k=2, exclude
 
     results = []
     for _, row in nearest.iterrows():
+        query = urllib.parse.quote(f"{row['title']} {row['artist_name']}")
+        youtube_url = f"https://www.youtube.com/results?search_query={query}"
         results.append({
-            'track_id':   int(row['track_id']),
-            'title':      row['title'],
-            'artist':     row['artist_name'],
-            'genre':      row['genre_top'],
-            'valence':    round(float(row['valence']), 3),
-            'energy':     round(float(row['energy']),  3),
+            'track_id':    int(row['track_id']),
+            'title':       row['title'],
+            'artist':      row['artist_name'],
+            'genre':       row['genre_top'],
+            'valence':     round(float(row['valence']), 3),
+            'energy':      round(float(row['energy']),  3),
             'va_distance': round(float(row['va_distance']), 3),
+            'youtube_url': youtube_url,
         })
     return results
 
@@ -411,6 +422,41 @@ STOPWORDS = {
     'could', 'should', 'bit', 'lot', 'way', 'right', 'now'
 }
 
+MOOD_VOCABULARY = {
+    (1, 1): ["desolate", "hollow", "grief-stricken", "hopeless"],
+    (1, 2): ["mournful", "sorrowful", "despairing", "forlorn"],
+    (1, 3): ["anguished", "tortured", "harrowing", "bleak"],
+    (1, 4): ["desperate", "agonizing", "raw", "gut-wrenching"],
+    (2, 1): ["sad", "heavy", "subdued", "somber"],
+    (2, 2): ["melancholy", "downcast", "wistful", "pensive"],
+    (2, 3): ["troubled", "brooding", "dark", "unsettled"],
+    (2, 4): ["tense", "anxious", "uneasy", "restless"],
+    (3, 1): ["quiet", "withdrawn", "introspective", "dim"],
+    (3, 2): ["reflective", "contemplative", "bittersweet", "longing"],
+    (3, 3): ["stirring", "charged", "moody", "complex"],
+    (3, 4): ["driving", "urgent", "intense", "forceful"],
+    (4, 1): ["subdued", "understated", "restrained", "spare"],
+    (4, 2): ["measured", "considered", "nuanced", "layered"],
+    (4, 3): ["dynamic", "textured", "rich", "varied"],
+    (4, 4): ["propulsive", "energetic", "vigorous", "bold"],
+    (5, 1): ["gentle", "soft", "easy", "relaxed"],
+    (5, 2): ["smooth", "balanced", "flowing", "steady"],
+    (5, 3): ["lively", "engaging", "warm", "bright"],
+    (5, 4): ["spirited", "animated", "vibrant", "punchy"],
+    (6, 1): ["peaceful", "serene", "tender", "soothing"],
+    (6, 2): ["content", "warm", "comfortable", "grounded"],
+    (6, 3): ["upbeat", "cheerful", "buoyant", "light"],
+    (6, 4): ["energized", "exciting", "invigorating", "alive"],
+    (7, 1): ["blissful", "calm", "radiant", "glowing"],
+    (7, 2): ["joyful", "happy", "bright", "sunny"],
+    (7, 3): ["jubilant", "celebratory", "triumphant", "soaring"],
+    (7, 4): ["exhilarating", "thrilling", "euphoric", "electric"],
+    (8, 1): ["transcendent", "ethereal", "luminous", "sublime"],
+    (8, 2): ["ecstatic", "elated", "overjoyed", "rapturous"],
+    (8, 3): ["euphoric", "exuberant", "radiant", "glorious"],
+    (8, 4): ["explosive", "unstoppable", "fierce", "electrifying"],
+}
+
 def _apply_modifiers(words, vad_lexicon):
     """
     Handle modifier words before VAD lookup.
@@ -488,3 +534,107 @@ def _load_vad_lexicon():
     }
 
 VAD_LEXICON = _load_vad_lexicon()
+
+def _get_mood_words(valence: float, energy: float) -> list[str]:
+    """
+    Map valence and energy to mood vocabulary words.
+
+    8 valence bands × 4 energy bands = 32 distinct emotional regions.
+    Each region has 4 human-curated music mood words drawn from
+    music description language — not general English affect words.
+
+    Why hand-curated over NRC VAD Lexicon:
+        The NRC VAD Lexicon covers all English words. Most high-valence
+        words in it are domain-irrelevant ("moisturizer", "diploma").
+        Music mood description requires domain-specific vocabulary that
+        people actually use when describing how music feels.
+    """
+    # Map valence to 1-8 band
+    v_band = min(8, max(1, int(valence * 8) + 1))
+    if valence >= 1.0:
+        v_band = 8
+
+    # Map energy to 1-4 band
+    e_band = min(4, max(1, int(energy * 4) + 1))
+    if energy >= 1.0:
+        e_band = 4
+
+    return MOOD_VOCABULARY.get((v_band, e_band), ["atmospheric", "evocative"])
+
+def generate_track_description(row):
+    """
+    Convert a track's Echonest features into a natural language description.
+
+    Uses MOOD_VOCABULARY — 32 VA regions × 4 words each — to produce
+    emotionally distinct descriptions across the valence-arousal space.
+    Richer vocabulary means similar queries like "anxious" vs "sad"
+    retrieve genuinely different tracks rather than collapsing to the
+    same VA region.
+
+    Thresholds:
+        Acousticness: p50 split (0.574) — bimodal distribution
+        Instrumentalness: fixed 0.5 — bimodal, domain knowledge
+        Genre: included when available, omitted for Unknown
+    """
+    mood_words = _get_mood_words(row['valence'], row['energy'])
+    mood_str = ", ".join(mood_words[:3])  # use 3 of the 4 words
+
+    # Acousticness
+    if row['acousticness'] > 0.574:
+        texture = "acoustic"
+    elif row['acousticness'] < 0.104:
+        texture = "electronic"
+    else:
+        texture = "mixed"
+
+    # Instrumentalness
+    vocal = "instrumental" if row['instrumentalness'] > 0.5 else "vocal"
+
+    # Genre
+    genre = row['genre_top'] if row['genre_top'] != 'Unknown' else ""
+    genre_str = f"{genre} " if genre else ""
+
+    return (
+        f"A {genre_str}track that feels {mood_str}. "
+        f"The music is {texture} and {vocal}."
+    )
+
+def _rerank_by_query(results: list, query_text: str, model) -> list:
+    """
+    Rerank retrieved tracks by semantic similarity to the original query.
+
+    Why this helps:
+        FAISS retrieves tracks whose description vectors are closest to
+        the query vector. But with a small candidate pool, tracks from
+        the same VA region get similar scores even if their descriptions
+        differ in emotional nuance. Reranking by direct query-description
+        similarity promotes tracks whose specific vocabulary best matches
+        the query's emotional language.
+
+    Method:
+        Embed the query and each track description independently,
+        compute cosine similarity between query and each description,
+        sort by that score descending.
+
+    Cost:
+        One model.encode() call per result (small — descriptions are
+        short). Acceptable for k=5-10 results.
+    """
+    import numpy as np
+
+    query_vec = model.encode([query_text], convert_to_numpy=True)
+    desc_vecs = model.encode(
+        [r['description'] for r in results],
+        convert_to_numpy=True
+    )
+
+    # Cosine similarity
+    query_norm = query_vec / np.linalg.norm(query_vec)
+    desc_norms = desc_vecs / np.linalg.norm(desc_vecs, axis=1, keepdims=True)
+    scores = (desc_norms @ query_norm.T).squeeze()
+
+    # Attach rerank score and sort
+    for i, r in enumerate(results):
+        r['rerank_score'] = float(scores[i])
+
+    return sorted(results, key=lambda x: x['rerank_score'], reverse=True)

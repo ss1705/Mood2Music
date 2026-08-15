@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,300;1,400&family=Inter:wght@300;400;500;600&display=swap');
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #0a0010;
+  color: #e2e0f0;
+  font-family: 'Inter', -apple-system, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient glow layer — sits behind content */
+.glow-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  transition: all 1.2s ease;
+}
+
+.glow {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  transition: all 1.2s ease;
+}
+
+.glow-indigo {
+  background: radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%);
+}
+
+.glow-teal {
+  background: radial-gradient(circle, rgba(20,184,166,0.15) 0%, transparent 70%);
+}
+
+.glow-amber {
+  background: radial-gradient(circle, rgba(251,146,60,0.12) 0%, transparent 70%);
+}
+
+/* Content sits above glow layer */
+.content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Glass card */
+.glass {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+}
+
+/* Input */
+.mood-input-wrap {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 14px;
+  transition: border-color 0.2s ease;
+  position: relative;
+}
+
+.mood-input-wrap:focus-within {
+  border-color: rgba(255,255,255,0.18);
+}
+
+.mood-input-wrap textarea {
+  width: 100%;
+  padding: 18px 52px 18px 20px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: rgba(255,255,255,0.8);
+  font-size: 15px;
+  font-family: 'Inter', sans-serif;
+  line-height: 1.6;
+  resize: none;
+  caret-color: rgba(255,255,255,0.5);
+}
+
+.mood-input-wrap textarea::placeholder {
+  color: rgba(255,255,255,0.2);
+  font-style: italic;
+}
+
+/* Valence dot colors */
+.dot-indigo { background: #818cf8; }
+.dot-teal   { background: #2dd4bf; }
+.dot-amber  { background: #fbbf24; }
+
+/* Waypoint dividers */
+.wp-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 10px;
+}
+
+.wp-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,0.05);
+}
+
+/* Fade in animation */
+.fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }

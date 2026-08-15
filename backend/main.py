@@ -21,7 +21,7 @@ from backend.models import (
 from backend.dependencies import load_all_artifacts
 from src.retrieval.retriever import search_hybrid, search_regulation
 import os
-
+import traceback
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -66,6 +66,59 @@ def health(request: Request):
 # Feature flag — set CLAP=1 in production environment (Modal)
 USE_CLAP = os.getenv("USE_CLAP", "0") == "1"
 
+# @app.post("/search", response_model=SearchResponse)
+# def search(body: SearchRequest, request: Request):
+#     a = get_artifacts(request)
+
+#     try:
+#         if USE_CLAP:
+#             results = search_hybrid(
+#                 query_text=body.query,
+#                 model_2a=a['model_2a'],
+#                 index_2a=a['index_2a'],
+#                 map_2a=a['map_2a'],
+#                 model_clap=a['model_clap'],
+#                 processor_clap=a['processor_clap'],
+#                 device_clap=a['device_clap'],
+#                 index_clap=a['index_clap'],
+#                 map_clap=a['map_clap'],
+#                 catalog=a['catalog'],
+#                 k=body.k
+#             )
+#         else:
+#             # Phase 2A only — used during local development
+#             # CLAP hybrid enabled in production via USE_CLAP=1 env var
+#             from src.retrieval.retriever import search_2a
+#             results = search_2a(
+#                 query_text=body.query,
+#                 model=a['model_2a'],
+#                 index=a['index_2a'],
+#                 track_id_map=a['map_2a'],
+#                 catalog=a['catalog'],
+#                 k=body.k
+#             )
+#             # Add dummy target coords for response schema compatibility
+#             for r in results:
+#                 r['target_valence'] = round(
+#                     float(a['catalog']['valence'].mean()), 3)
+#                 r['target_energy'] = round(
+#                     float(a['catalog']['energy'].mean()), 3)
+
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+#     tracks = [Track(**{k: v for k, v in r.items()
+#                        if k in Track.model_fields}) for r in results]
+
+#     meta = SearchMeta(
+#         system="hybrid_clap" if USE_CLAP else "2a_text",
+#         target_valence=results[0]['target_valence'],
+#         target_energy=results[0]['target_energy'],
+#         query=body.query
+#     )
+
+#     return SearchResponse(tracks=tracks, meta=meta)
+
 @app.post("/search", response_model=SearchResponse)
 def search(body: SearchRequest, request: Request):
     a = get_artifacts(request)
@@ -86,8 +139,6 @@ def search(body: SearchRequest, request: Request):
                 k=body.k
             )
         else:
-            # Phase 2A only — used during local development
-            # CLAP hybrid enabled in production via USE_CLAP=1 env var
             from src.retrieval.retriever import search_2a
             results = search_2a(
                 query_text=body.query,
@@ -97,21 +148,19 @@ def search(body: SearchRequest, request: Request):
                 catalog=a['catalog'],
                 k=body.k
             )
-            # Add dummy target coords for response schema compatibility
             for r in results:
-                r['target_valence'] = round(
-                    float(a['catalog']['valence'].mean()), 3)
-                r['target_energy'] = round(
-                    float(a['catalog']['energy'].mean()), 3)
+                r['target_valence'] = round(float(a['catalog']['valence'].mean()), 3)
+                r['target_energy'] = round(float(a['catalog']['energy'].mean()), 3)
 
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
     tracks = [Track(**{k: v for k, v in r.items()
                        if k in Track.model_fields}) for r in results]
 
     meta = SearchMeta(
-        system="hybrid_clap" if USE_CLAP else "2a_text",
+        system='hybrid_clap' if USE_CLAP else '2a_text',
         target_valence=results[0]['target_valence'],
         target_energy=results[0]['target_energy'],
         query=body.query
