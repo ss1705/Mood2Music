@@ -15,3 +15,5 @@ __pycache__/
 !data/catalog.parquet
 !data/track_index.faiss
 !data/track_id_map.pkl
+!data/track_index_clap.faiss
+!data/track_id_map_clap.pkl

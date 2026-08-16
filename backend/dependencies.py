@@ -5,9 +5,13 @@ Model and artifact loading for FastAPI dependency injection.
 All heavy objects (models, indexes, catalog) are loaded once
 at startup and shared across requests via app.state.
 """
-
+import os
 import sys
+import faiss
+import pickle
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Ensure src/ is importable from the backend directory
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -32,12 +36,13 @@ def load_all_artifacts():
     print(f"  Index size: {index_2a.ntotal}")
 
     if use_clap:
-        print("Loading CLAP artifacts...")
-        model_clap, processor_clap, device_clap, index_clap, map_clap = \
-            load_clap_artifacts()
-        print(f"  Device: {device_clap}")
+        print("Loading CLAP FAISS index (model runs on Modal)...")
+        index_clap = faiss.read_index(str(PROJECT_ROOT / 'data' / 'track_index_clap.faiss'))
+        with open(PROJECT_ROOT / 'data' / 'track_id_map_clap.pkl', 'rb') as f:
+            map_clap = pickle.load(f)
+        model_clap = processor_clap = device_clap = None
+        print(f"  CLAP index size: {index_clap.ntotal}")
     else:
-        print("Skipping CLAP (USE_CLAP not set) — using Phase 2A only")
         model_clap = processor_clap = device_clap = index_clap = map_clap = None
 
     return {

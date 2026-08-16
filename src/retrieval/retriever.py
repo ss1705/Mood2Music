@@ -204,9 +204,7 @@ def search_hybrid(query_text,
     target_energy  = np.mean([r['energy']  for r in ref])
 
     # Step 2 — CLAP candidate pool
-    query_vec = _embed_text_clap(
-        query_text, model_clap, processor_clap, device_clap
-    )
+    query_vec = _embed_text_clap_modal(query_text)
     faiss.normalize_L2(query_vec)
     scores, positions = index_clap.search(query_vec, candidate_pool)
 
@@ -638,3 +636,16 @@ def _rerank_by_query(results: list, query_text: str, model) -> list:
         r['rerank_score'] = float(scores[i])
 
     return sorted(results, key=lambda x: x['rerank_score'], reverse=True)
+
+def _embed_text_clap_modal(query_text: str) -> np.ndarray:
+    """
+    Encode query text via Modal serverless CLAP function.
+    
+    Replaces local CLAP model loading — Modal runs laion/clap-htsat-fused
+    on a T4 GPU and returns a normalized 512-dim vector.
+    Cold start: ~15s. Warm: ~1-2s.
+    """
+    import modal
+    f = modal.Function.from_name("mood2music-clap", "encode_text")
+    result = f.remote(query_text)
+    return np.array(result, dtype=np.float32).reshape(1, -1)
