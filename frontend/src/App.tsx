@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { MoodInput } from './components/MoodInput'
 import { TrackCard } from './components/TrackCard'
 import { UnderTheHood } from './components/UnderTheHood'
+import { MoodSuggestions } from './components/MoodSuggestions'
+import { VAPathChart } from './components/VAPathChart'
 import { searchMood, regulateMood } from './api/client'
 import type { SearchResponse, RegulateResponse } from './api/types'
 
@@ -121,7 +123,7 @@ export default function App() {
     <>
       {/* Reactive glow layer */}
       <div className="glow-layer">
-        {g && (
+        {g ? (
           <>
             <div
               className={`glow glow-${g.g1.color}`}
@@ -145,6 +147,18 @@ export default function App() {
                 right: 'right' in g.g2 ? (g.g2 as any).right : undefined,
                 opacity: g.g2.opacity,
               }}
+            />
+          </>
+        ) : (
+          <>
+            {/* Default drifting glows on landing state */}
+            <div
+              className="glow glow-indigo glow-drift-1"
+              style={{ width: 400, height: 400, top: -100, right: -80, opacity: 0.6 }}
+            />
+            <div
+              className="glow glow-teal glow-drift-2"
+              style={{ width: 300, height: 300, bottom: 50, left: -60, opacity: 0.4 }}
             />
           </>
         )}
@@ -185,12 +199,23 @@ export default function App() {
 
         {/* Initial input */}
         {!submittedMood && (
+          <>
           <MoodInput
             placeholder="I feel..."
             onSubmit={handleSearch}
             loading={loading}
             autoFocus
           />
+          <MoodSuggestions onSelect={handleSearch} />
+            <p style={{
+              textAlign: 'center',
+              fontSize: '10px',
+              color: 'rgba(255,255,255,0.12)',
+              marginTop: '24px',
+              letterSpacing: '0.06em',
+            }}>
+            </p>
+          </>
         )}
 
         {/* Submitted mood tag */}
@@ -333,6 +358,8 @@ export default function App() {
             }}>
               your journey
             </p>
+
+            <VAPathChart result={regulationResults} />
 
             {regulationResults.waypoints.map((wp, wi) => {
               const isFirst = wi === 0
