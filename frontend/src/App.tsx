@@ -51,7 +51,7 @@ export default function App() {
   const [currentMood, setCurrentMood] = useState('')
   const [submittedMood, setSubmittedMood] = useState('')
   const [glowConfig, setGlowConfig] = useState<ReturnType<typeof getGlowConfig> | null>(null)
-
+  const [moodHistory, setMoodHistory] = useState<string[]>([])
   // Update glow when results change
   useEffect(() => {
     if (searchResults) {
@@ -83,6 +83,13 @@ export default function App() {
     setSubmittedMood(query)
     setRegulationResults(null)
     setRegulationMode(false)
+
+    // Add to history (keep last 3, no duplicates)
+    setMoodHistory(prev => {
+      const filtered = prev.filter(m => m !== query)
+      return [query, ...filtered].slice(0, 3)
+    })
+
     try {
       const results = await searchMood(query)
       setSearchResults(results)
@@ -207,14 +214,57 @@ export default function App() {
             autoFocus
           />
           <MoodSuggestions onSelect={handleSearch} />
-            <p style={{
-              textAlign: 'center',
-              fontSize: '10px',
-              color: 'rgba(255,255,255,0.12)',
+          {moodHistory.length > 0 && (
+            <div style={{
               marginTop: '24px',
-              letterSpacing: '0.06em',
+              textAlign: 'center',
             }}>
-            </p>
+              <p style={{
+                fontSize: '9px',
+                color: 'rgba(255,255,255,0.15)',
+                letterSpacing: '0.08em',
+                marginBottom: '10px',
+              }}>
+                recent
+              </p>
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                justifyContent: 'center',
+                flexWrap: 'wrap',
+              }}>
+                {moodHistory.map((mood, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSearch(mood)}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid rgba(255,255,255,0.06)',
+                      borderRadius: '20px',
+                      padding: '5px 12px',
+                      fontSize: '10px',
+                      color: 'rgba(255,255,255,0.25)',
+                      cursor: 'pointer',
+                      fontFamily: 'Inter, sans-serif',
+                      letterSpacing: '0.02em',
+                      fontStyle: 'italic',
+                      transition: 'all 0.2s ease',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.color = 'rgba(255,255,255,0.5)'
+                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.color = 'rgba(255,255,255,0.25)'
+                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'
+                    }}
+                  >
+                    {mood}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}            
           </>
         )}
 
