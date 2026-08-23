@@ -30,6 +30,12 @@ export function VAPathChart({ result }: Props) {
     .map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`)
     .join(' ')
 
+  const tooltipBox: React.CSSProperties = {
+    background: 'rgba(13,1,24,0.95)',
+    borderRadius: '10px',
+    padding: '10px 14px',
+  }
+
   return (
     <div style={{ marginTop: '24px', marginBottom: '8px' }}>
       <p style={{
@@ -42,15 +48,58 @@ export function VAPathChart({ result }: Props) {
         your emotional path
       </p>
 
-      <div style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', alignItems: 'flex-start' }}>
+
+        {/* Left panel — now + step tooltips */}
+        <div style={{ width: '160px', flexShrink: 0 }}>
+          {hoveredStart && (
+            <div style={{ ...tooltipBox, border: '1px solid rgba(99,102,241,0.3)' }}>
+              <p style={{ fontSize: '9px', color: 'rgba(199,199,255,0.6)', marginBottom: '6px', letterSpacing: '0.06em' }}>
+                where you are
+              </p>
+              {result.waypoints[0]?.tracks.map((track, i) => (
+                <div key={i} style={{ marginBottom: '4px' }}>
+                  <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {track.title}
+                  </p>
+                  <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)' }}>
+                    {track.artist}
+                  </p>
+                </div>
+              ))}
+              <p style={{ fontSize: '8px', color: 'rgba(199,199,255,0.3)', marginTop: '6px' }}>
+                val {result.meta.current_coords[0].toFixed(2)} · nrg {result.meta.current_coords[1].toFixed(2)}
+              </p>
+            </div>
+          )}
+          {hoveredWaypoint !== null && (
+            <div style={{ ...tooltipBox, border: '1px solid rgba(99,102,241,0.3)' }}>
+              <p style={{ fontSize: '9px', color: 'rgba(199,199,255,0.6)', marginBottom: '6px', letterSpacing: '0.06em' }}>
+                step {hoveredWaypoint}
+              </p>
+              {result.waypoints[hoveredWaypoint]?.tracks.map((track, i) => (
+                <div key={i} style={{ marginBottom: '4px' }}>
+                  <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {track.title}
+                  </p>
+                  <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)' }}>
+                    {track.artist}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Chart */}
         <svg
           width={W}
           height={H}
           style={{
             background: 'rgba(255,255,255,0.02)',
             borderRadius: '14px',
-            border: '1px solid rgba(255,255,255,0.06)',
-            overflow: 'visible',
+            border: '1px solid rgba(255,255,255,0.07)',
+            flexShrink: 0,
           }}
         >
           {/* Quadrant labels */}
@@ -70,7 +119,7 @@ export function VAPathChart({ result }: Props) {
           {/* Path */}
           <path d={pathD} fill="none" stroke="rgba(99,102,241,0.35)" strokeWidth="1.5" strokeDasharray="5 3" />
 
-          {/* Intermediate waypoint dots — hoverable */}
+          {/* Intermediate waypoint dots */}
           {result.waypoints.slice(1, -1).map((_wp, i) => {
             const pt = waypoints[i + 1]
             const isHovered = hoveredWaypoint === i + 1
@@ -81,7 +130,7 @@ export function VAPathChart({ result }: Props) {
                   cy={pt.y}
                   r={isHovered ? 10 : 6}
                   fill="rgba(99,102,241,0.15)"
-                  style={{ cursor: 'pointer', transition: 'r 0.2s' }}
+                  style={{ cursor: 'pointer' }}
                   onMouseEnter={() => setHoveredWaypoint(i + 1)}
                   onMouseLeave={() => setHoveredWaypoint(null)}
                 />
@@ -90,9 +139,8 @@ export function VAPathChart({ result }: Props) {
                   cy={pt.y}
                   r={isHovered ? 5 : 3}
                   fill={isHovered ? '#818cf8' : 'rgba(99,102,241,0.6)'}
-                  style={{ cursor: 'pointer', pointerEvents: 'none' }}
+                  style={{ pointerEvents: 'none' }}
                 />
-                {/* Step number */}
                 <text
                   x={pt.x}
                   y={pt.y - 10}
@@ -108,120 +156,52 @@ export function VAPathChart({ result }: Props) {
           })}
 
           {/* Current mood dot — indigo */}
-           <g
+          <g
             onMouseEnter={() => setHoveredStart(true)}
             onMouseLeave={() => setHoveredStart(false)}
             style={{ cursor: 'pointer' }}
-            >
-            <circle cx={current.x} cy={current.y} r={hoveredStart ? 14 : 10} fill="rgba(99,102,241,0.15)" style={{ transition: 'r 0.2s' }} />
+          >
+            <circle cx={current.x} cy={current.y} r={hoveredStart ? 14 : 10} fill="rgba(99,102,241,0.15)" />
             <circle cx={current.x} cy={current.y} r={hoveredStart ? 7 : 5} fill="#818cf8" style={{ pointerEvents: 'none' }} />
             <text x={current.x} y={current.y - 14} fontSize="9" fill="rgba(199,199,255,0.8)" textAnchor="middle" fontFamily="Inter,sans-serif" fontWeight="500">now</text>
-            </g>
-            
-           {/* Target mood dot — teal */}
-            <g
+          </g>
+
+          {/* Target mood dot — teal */}
+          <g
             onMouseEnter={() => setHoveredEnd(true)}
             onMouseLeave={() => setHoveredEnd(false)}
             style={{ cursor: 'pointer' }}
-            >
-            <circle cx={target.x} cy={target.y} r={hoveredEnd ? 14 : 10} fill="rgba(45,212,191,0.15)" style={{ transition: 'r 0.2s' }} />
+          >
+            <circle cx={target.x} cy={target.y} r={hoveredEnd ? 14 : 10} fill="rgba(45,212,191,0.15)" />
             <circle cx={target.x} cy={target.y} r={hoveredEnd ? 7 : 5} fill="#2dd4bf" style={{ pointerEvents: 'none' }} />
             <text x={target.x} y={target.y - 14} fontSize="9" fill="rgba(153,246,228,0.8)" textAnchor="middle" fontFamily="Inter,sans-serif" fontWeight="500">goal</text>
-            </g>
+          </g>
         </svg>
 
-        {/* Hover tooltip — shows tracks at hovered waypoint */}
-        {hoveredWaypoint !== null && (
-          <div style={{
-            position: 'absolute',
-            top: '8px',
-            right: '-10px',
-            background: 'rgba(13,1,24,0.95)',
-            border: '1px solid rgba(99,102,241,0.3)',
-            borderRadius: '10px',
-            padding: '10px 14px',
-            width: '180px',
-            pointerEvents: 'none',
-          }}>
-            <p style={{ fontSize: '9px', color: 'rgba(199,199,255,0.6)', marginBottom: '6px', letterSpacing: '0.06em' }}>
-              step {hoveredWaypoint}
-            </p>
-            {result.waypoints[hoveredWaypoint]?.tracks.map((track, i) => (
-              <div key={i} style={{ marginBottom: '4px' }}>
-                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {track.title}
-                </p>
-                <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)' }}>
-                  {track.artist}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Start tooltip */}
-        {hoveredStart && (
-        <div style={{
-            position: 'absolute',
-            top: '8px',
-            left: '-10px',
-            background: 'rgba(13,1,24,0.95)',
-            border: '1px solid rgba(99,102,241,0.3)',
-            borderRadius: '10px',
-            padding: '10px 14px',
-            width: '180px',
-            pointerEvents: 'none',
-        }}>
-            <p style={{ fontSize: '9px', color: 'rgba(199,199,255,0.6)', marginBottom: '6px', letterSpacing: '0.06em' }}>
-            where you are
-            </p>
-            {result.waypoints[0]?.tracks.map((track, i) => (
-            <div key={i} style={{ marginBottom: '4px' }}>
-                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {track.title}
-                </p>
-                <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)' }}>
-                {track.artist}
-                </p>
+        {/* Right panel — goal tooltip */}
+        <div style={{ width: '160px', flexShrink: 0 }}>
+          {hoveredEnd && (
+            <div style={{ ...tooltipBox, border: '1px solid rgba(45,212,191,0.3)' }}>
+              <p style={{ fontSize: '9px', color: 'rgba(153,246,228,0.6)', marginBottom: '6px', letterSpacing: '0.06em' }}>
+                where you're going
+              </p>
+              {result.waypoints[result.waypoints.length - 1]?.tracks.map((track, i) => (
+                <div key={i} style={{ marginBottom: '4px' }}>
+                  <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {track.title}
+                  </p>
+                  <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)' }}>
+                    {track.artist}
+                  </p>
+                </div>
+              ))}
+              <p style={{ fontSize: '8px', color: 'rgba(153,246,228,0.3)', marginTop: '6px' }}>
+                val {result.meta.target_coords[0].toFixed(2)} · nrg {result.meta.target_coords[1].toFixed(2)}
+              </p>
             </div>
-            ))}
-            <p style={{ fontSize: '8px', color: 'rgba(199,199,255,0.3)', marginTop: '6px' }}>
-            val {result.meta.current_coords[0].toFixed(2)} · nrg {result.meta.current_coords[1].toFixed(2)}
-            </p>
+          )}
         </div>
-        )}
 
-        {/* End tooltip */}
-        {hoveredEnd && (
-        <div style={{
-            position: 'absolute',
-            top: '8px',
-            right: '-10px',
-            background: 'rgba(13,1,24,0.95)',
-            border: '1px solid rgba(45,212,191,0.3)',
-            borderRadius: '10px',
-            padding: '10px 14px',
-            width: '180px',
-            pointerEvents: 'none',
-        }}>
-            <p style={{ fontSize: '9px', color: 'rgba(153,246,228,0.6)', marginBottom: '6px', letterSpacing: '0.06em' }}>
-            where you're going
-            </p>
-            {result.waypoints[result.waypoints.length - 1]?.tracks.map((track, i) => (
-            <div key={i} style={{ marginBottom: '4px' }}>
-                <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {track.title}
-                </p>
-                <p style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)' }}>
-                {track.artist}
-                </p>
-            </div>
-            ))}
-            <p style={{ fontSize: '8px', color: 'rgba(153,246,228,0.3)', marginTop: '6px' }}>
-            val {result.meta.target_coords[0].toFixed(2)} · nrg {result.meta.target_coords[1].toFixed(2)}
-            </p>
-        </div>
-        )}
       </div>
     </div>
   )
