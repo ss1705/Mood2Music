@@ -281,7 +281,7 @@ export default function App() {
               color: 'rgba(255,255,255,0.38)',
               fontStyle: 'italic',
             }}>
-              "{submittedMood}"
+              "{submittedMood.length > 60 ? submittedMood.slice(0, 60) + '...' : submittedMood}"
             </span>
             <button onClick={reset} style={{
               fontSize: '10px',
@@ -307,9 +307,9 @@ export default function App() {
               color: 'rgba(255,255,255,0.35)',
               fontStyle: 'italic',
             }}>
-              "{submittedMood}"
+              "{submittedMood.length > 60 ? submittedMood.slice(0, 60) + '...' : submittedMood}"
               <span style={{ margin: '0 8px', color: 'rgba(255,255,255,0.15)' }}>→</span>
-              "{regulationResults.meta.target_mood}"
+              "{regulationResults.meta.target_mood.length > 60 ? regulationResults.meta.target_mood.slice(0, 60) + '...' : regulationResults.meta.target_mood}"
             </span>
           </div>
         )}
@@ -347,6 +347,34 @@ export default function App() {
             {searchResults.tracks.map((track, i) => (
               <TrackCard key={track.track_id} track={track} index={i} />
             ))}
+
+            {/* Legend */}
+            <div style={{
+              display: 'flex',
+              gap: '16px',
+              marginTop: '10px',
+              padding: '0 4px',
+              flexWrap: 'wrap',
+            }}>
+              {[
+                { color: '#818cf8', label: 'low valence' },
+                { color: '#2dd4bf', label: 'mid valence' },
+                { color: '#fbbf24', label: 'high valence' },
+              ].map(({ color, label }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: color, flexShrink: 0 }} />
+                  <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.2)', letterSpacing: '0.04em' }}>{label}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginLeft: 'auto' }}>
+                <div style={{ display: 'flex', gap: '2px', alignItems: 'flex-end', height: '10px' }}>
+                  {[3, 5, 7, 9].map((h, i) => (
+                    <div key={i} style={{ width: '3px', height: `${h}px`, borderRadius: '2px', background: 'rgba(255,255,255,0.3)' }} />
+                  ))}
+                </div>
+                <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.2)', letterSpacing: '0.04em' }}>energy</span>
+              </div>
+            </div>
 
             <UnderTheHood type="search" meta={searchResults.meta} />
 
