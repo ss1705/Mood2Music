@@ -2,7 +2,7 @@
 
 **Mood-aware music discovery and emotion-guided playlist sequencing.**
 
-[**Try the live demo**](https://mood2-music.vercel.app/) · [**Explore the source**](https://github.com/ss1705/mood2music)
+[**Try the live demo**](https://mood2-music.vercel.app/)
 
 Most recommenders learn from *what you usually listen to*. Mood2Music explores a complementary question: **what kind of music fits how you feel right now—and where you'd like your mood to go?** Built as an exploratory music information retrieval project, it combines natural-language queries, pretrained audio/text representations, and interpretable valence–energy features.
 
